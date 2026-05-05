@@ -27,6 +27,9 @@ export class ClerkAuthGuard implements CanActivate {
     private readonly usersService: UsersService,
   ) {
     this.secretKey = this.configService.getOrThrow<string>('CLERK_SECRET_KEY');
+    this.logger.debug(
+      `ClerkAuthGuard initialized with secretKey: ${this.secretKey.substring(0, 10)}...${this.secretKey.slice(-5)}`,
+    );
     // Optional: JWKS public key for local (offline) token verification
     const rawJwtKey = this.configService.get<string>('CLERK_JWT_KEY');
     // Replace literal \n with actual newlines (some dotenv versions don't expand them)
@@ -56,30 +59,43 @@ export class ClerkAuthGuard implements CanActivate {
     // Log first 20 chars of token to confirm it is arriving
     this.logger.debug(`Token received: ${token.substring(0, 20)}...`);
 
+    let payload: any;
     try {
       // Prefer jwtKey (public RSA key) for local verification — no Clerk API call needed.
       // Fallback to secretKey which fetches JWKS from Clerk API.
-      const payload = await verifyToken(
+      payload = await verifyToken(
         token,
         this.jwtKey ? { jwtKey: this.jwtKey } : { secretKey: this.secretKey },
       );
-
-      const clerkId = payload.sub;
-
-      if (!clerkId) {
-        throw new UnauthorizedException('Invalid token payload: missing sub');
-      }
-
-      request.userId = clerkId;
-      request.user = await this.usersService.findOrSyncFromClerk(clerkId);
-
-      return true;
     } catch (err) {
-      // Log full error to understand the root cause
       this.logger.error(
-        `Auth failed — name: ${(err as Error).name} | message: ${(err as Error).message}`,
+        `Token verification failed (Local) — name: ${(err as Error).name} | message: ${(err as Error).message}`,
       );
-      throw new UnauthorizedException('Authentication failed');
+
+      // Fallback to online verification if local fails (e.g. key mismatch for some token types)
+      try {
+        this.logger.debug('Attempting fallback online verification...');
+        payload = await verifyToken(token, { secretKey: this.secretKey });
+        this.logger.debug('Online verification succeeded.');
+      } catch (onlineErr) {
+        this.logger.error(
+          `Token verification failed (Online) — name: ${(onlineErr as Error).name} | message: ${(onlineErr as Error).message}`,
+        );
+        throw new UnauthorizedException('Authentication failed');
+      }
     }
+
+    const clerkId = payload.sub;
+
+    if (!clerkId) {
+      throw new UnauthorizedException('Invalid token payload: missing sub');
+    }
+
+    request.userId = clerkId;
+
+    // This may throw a 500 if the DB or Clerk API is down, which is correct (not a 401).
+    request.user = await this.usersService.findOrSyncFromClerk(clerkId);
+
+    return true;
   }
 }

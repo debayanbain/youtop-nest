@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Sequelize } from 'sequelize-typescript';
 import { QueryTypes } from 'sequelize';
@@ -26,7 +21,7 @@ export type TransactionCallback<T> = (
 ) => Promise<T>;
 
 @Injectable()
-export class PostgresService implements OnModuleInit, OnModuleDestroy {
+export class PostgresService implements OnModuleDestroy {
   private readonly logger = new Logger(PostgresService.name);
   private sequelize: Sequelize | null = null;
   private isConnected: boolean = false;
@@ -34,10 +29,6 @@ export class PostgresService implements OnModuleInit, OnModuleDestroy {
   private connectionPromise: Promise<Sequelize> | null = null;
 
   constructor(private readonly configService: ConfigService) {}
-
-  async onModuleInit() {
-    await this.getConnection();
-  }
 
   async onModuleDestroy() {
     await this.disconnect();

@@ -2,7 +2,6 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
-import { execSync } from 'child_process';
 
 async function bootstrap() {
   const port = Number(process.env.PORT ?? 3001);
@@ -24,7 +23,10 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   await app.listen(port);
-  console.log(`🚀 YouTOP NestJS API running on http://localhost:${port}`);
+  console.log(
+    `🚀 YouTOP NestJS API running on http://localhost:${port}`,
+    `🚀 YouTOP NestJS BullMQ UI running on http://localhost:${port}/queues`,
+  );
 }
 bootstrap().catch((err) => {
   console.error('❌ Application failed to start:', err);

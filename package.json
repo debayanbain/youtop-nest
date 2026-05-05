@@ -31,6 +31,9 @@
     "seed:undo": "sequelize-cli db:seed:undo:all"
   },
   "dependencies": {
+    "@bull-board/api": "^7.0.0",
+    "@bull-board/express": "^7.0.0",
+    "@bull-board/nestjs": "^7.0.0",
     "@clerk/backend": "^3.4.4",
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.0.1",

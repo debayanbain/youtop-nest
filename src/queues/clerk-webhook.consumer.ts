@@ -14,7 +14,10 @@ interface ClerkUserJSON {
   image_url: string | null;
 }
 
-@Processor(CLERK_WEBHOOKS_QUEUE)
+@Processor(CLERK_WEBHOOKS_QUEUE, {
+  stalledInterval: 60 * 60 * 1000, // Check for stalled jobs every 1 hour
+  maxStalledCount: 1,
+})
 export class ClerkWebhookConsumer extends WorkerHost {
   private readonly logger = new Logger(ClerkWebhookConsumer.name);
 
@@ -53,6 +56,7 @@ export class ClerkWebhookConsumer extends WorkerHost {
       }
 
       // Mark event as successfully processed
+      await this.dbService.getConnection();
       await this.dbService.models.WebhookEvent.update(
         { processed: true },
         { where: { id: webhookEventId } },
@@ -69,6 +73,7 @@ export class ClerkWebhookConsumer extends WorkerHost {
 
       // On final attempt, save error to the webhook_events row
       if (job.attemptsMade + 1 >= (job.opts.attempts ?? 5)) {
+        await this.dbService.getConnection();
         await this.dbService.models.WebhookEvent.update(
           { errorMessage: message },
           { where: { id: webhookEventId } },

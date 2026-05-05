@@ -25,8 +25,13 @@ export class ClerkWebhookProducer {
         type: 'exponential',
         delay: 1000, // 1s, 2s, 4s, 8s, 16s
       },
-      removeOnComplete: true, // cleanup completed jobs
-      removeOnFail: false, // keep failed jobs for inspection
+      removeOnComplete: {
+        age: 24 * 3600, // keep for 24 hours
+        count: 20, // keep last 20 jobs
+      },
+      removeOnFail: {
+        age: 24 * 3600, // keep failed jobs for 24 hours
+      },
     });
 
     this.logger.log(

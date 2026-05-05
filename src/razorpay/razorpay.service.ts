@@ -59,6 +59,7 @@ export class RazorpayService {
     const order = await this.razorpay.orders.create(options);
 
     try {
+      await this.dbService.getConnection();
       await this.dbService.models.Order.create({
         userId,
         orderId: order.id,
@@ -91,6 +92,7 @@ export class RazorpayService {
     }
 
     try {
+      await this.dbService.getConnection();
       await this.dbService.models.Order.update(
         {
           paymentId: razorpay_payment_id,

@@ -55,6 +55,7 @@ export class WebhooksController {
     }
 
     // ─── 2. Idempotency check ───────────────────────────────────────────────
+    await this.dbService.getConnection();
     const existingEvent = await this.dbService.models.WebhookEvent.findOne({
       where: { svixId },
     });
@@ -65,6 +66,7 @@ export class WebhooksController {
     }
 
     // ─── 3. Save raw event to DB (audit log + idempotency anchor) ──────────
+    await this.dbService.getConnection();
     const record = await this.dbService.models.WebhookEvent.create({
       svixId,
       eventType: evt.type,
