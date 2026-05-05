@@ -2,6 +2,8 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import compression from 'compression';
 
 async function bootstrap() {
   const port = Number(process.env.PORT ?? 3001);
@@ -15,10 +17,15 @@ async function bootstrap() {
   app.enableCors({
     origin: [
       'http://localhost:3000',
-      process.env.FRONTEND_URL ?? 'http://localhost:3000',
-    ],
+      'https://www.youtop.store',
+      'https://youtop.store',
+      process.env.FRONTEND_URL,
+    ].filter(Boolean),
     credentials: true,
   });
+
+  app.use(helmet());
+  app.use(compression());
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
