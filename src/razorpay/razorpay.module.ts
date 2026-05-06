@@ -8,5 +8,6 @@ import { UsersModule } from '../modules/users/users.module';
   imports: [UsersModule],
   controllers: [RazorpayController],
   providers: [RazorpayService, ClerkAuthGuard],
+  exports: [RazorpayService],
 })
 export class RazorpayModule {}

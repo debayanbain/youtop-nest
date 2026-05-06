@@ -112,4 +112,20 @@ export class RazorpayService {
       throw new InternalServerErrorException('Failed to update order');
     }
   }
+
+  async getUserPurchases(userId: string) {
+    try {
+      await this.dbService.getConnection();
+      const purchases = await this.dbService.models.Order.findAll({
+        where: {
+          userId,
+          status: 'success',
+        },
+      });
+      return purchases;
+    } catch (err) {
+      this.logger.error('Failed to fetch user purchases', err);
+      throw new InternalServerErrorException('Failed to fetch purchases');
+    }
+  }
 }

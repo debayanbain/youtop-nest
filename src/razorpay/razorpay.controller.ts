@@ -22,10 +22,7 @@ export class RazorpayController {
 
   /** POST /razorpay/order — Create a Razorpay order */
   @Post('order')
-  async createOrder(
-    @UserId() userId: string,
-    @Body() body: CreateOrderBody,
-  ) {
+  async createOrder(@UserId() userId: string, @Body() body: CreateOrderBody) {
     return this.razorpayService.createOrder(userId, {
       amount: body.amount,
       productType: body.productType,
@@ -44,5 +41,11 @@ export class RazorpayController {
       razorpay_payment_id: body.razorpay_payment_id,
       razorpay_signature: body.razorpay_signature,
     });
+  }
+
+  /** GET /razorpay/my-purchases — Get all successful purchases for user */
+  @Post('my-purchases')
+  async getMyPurchases(@UserId() userId: string) {
+    return await this.razorpayService.getUserPurchases(userId);
   }
 }
