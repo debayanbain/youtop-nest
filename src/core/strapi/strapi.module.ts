@@ -1,8 +1,9 @@
-import { Module, Global } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { StrapiService } from './strapi.service';
+import { CacheModule } from '../cache/cache.module';
 
-@Global()
 @Module({
+  imports: [CacheModule],
   providers: [StrapiService],
   exports: [StrapiService],
 })

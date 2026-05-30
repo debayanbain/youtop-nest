@@ -3,15 +3,21 @@ import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClerkWebhookProducer } from '../queues/clerk-webhook.producer';
 import { ClerkWebhookConsumer } from '../queues/clerk-webhook.consumer';
+import { EmailProducer } from './email.producer';
+import { EmailConsumer } from './email.consumer';
 import { UsersModule } from '../modules/users/users.module';
 
-import { CLERK_WEBHOOKS_QUEUE } from './queues.constants';
+import {
+  CLERK_WEBHOOKS_QUEUE,
+  EMAIL_QUEUE,
+  ANALYTICS_QUEUE,
+} from './queues.constants';
 
 import { BullBoardModule } from '@bull-board/nestjs';
 import { ExpressAdapter } from '@bull-board/express';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 
-export { CLERK_WEBHOOKS_QUEUE };
+export { CLERK_WEBHOOKS_QUEUE, EMAIL_QUEUE, ANALYTICS_QUEUE };
 
 @Module({
   imports: [
@@ -33,7 +39,6 @@ export { CLERK_WEBHOOKS_QUEUE };
             },
           };
         }
-        // Fallback to localhost for local development
         return {
           connection: {
             host: config.get<string>('REDIS_HOST', 'localhost'),
@@ -43,18 +48,37 @@ export { CLERK_WEBHOOKS_QUEUE };
         };
       },
     }),
-    BullModule.registerQueue({ name: CLERK_WEBHOOKS_QUEUE }),
+    BullModule.registerQueue(
+      { name: CLERK_WEBHOOKS_QUEUE },
+      { name: EMAIL_QUEUE },
+      { name: ANALYTICS_QUEUE },
+    ),
     BullBoardModule.forRoot({
       route: '/queues',
       adapter: ExpressAdapter,
     }),
-    BullBoardModule.forFeature({
-      name: CLERK_WEBHOOKS_QUEUE,
-      adapter: BullMQAdapter,
-    }),
+    BullBoardModule.forFeature(
+      {
+        name: CLERK_WEBHOOKS_QUEUE,
+        adapter: BullMQAdapter,
+      },
+      {
+        name: EMAIL_QUEUE,
+        adapter: BullMQAdapter,
+      },
+      {
+        name: ANALYTICS_QUEUE,
+        adapter: BullMQAdapter,
+      },
+    ),
     UsersModule,
   ],
-  providers: [ClerkWebhookProducer, ClerkWebhookConsumer],
-  exports: [ClerkWebhookProducer],
+  providers: [
+    ClerkWebhookProducer,
+    ClerkWebhookConsumer,
+    EmailProducer,
+    EmailConsumer,
+  ],
+  exports: [ClerkWebhookProducer, EmailProducer],
 })
 export class QueuesModule {}
