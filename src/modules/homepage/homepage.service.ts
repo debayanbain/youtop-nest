@@ -52,6 +52,9 @@ export class HomepageService {
         ),
     ]);
 
-    return HomepageMapper.mapToDto(homepageData, globalData);
+    return {
+      ...homepageData,
+      globalSettings: globalData,
+    };
   }
 }

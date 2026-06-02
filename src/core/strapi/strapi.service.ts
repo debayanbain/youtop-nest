@@ -23,6 +23,7 @@ export class StrapiService {
   private readonly logger = new Logger(StrapiService.name);
   private readonly baseUrl: string;
   private readonly apiToken: string;
+  private readonly isDev: boolean;
 
   constructor(
     private readonly configService: ConfigService,
@@ -32,6 +33,14 @@ export class StrapiService {
       this.configService.get<string>('STRAPI_URL') || 'http://localhost:1337'
     ).replace(/\/$/, '');
     this.apiToken = this.configService.get<string>('STRAPI_API_TOKEN') || '';
+
+    const env = this.configService.get<string>('NODE_ENV', 'development');
+    this.isDev = env !== 'production';
+    if (this.isDev) {
+      this.logger.log(
+        'Running in development mode. Strapi caching is bypassed.',
+      );
+    }
   }
 
   /**
@@ -89,15 +98,20 @@ export class StrapiService {
    */
   async getCollection<T>(path: string, ttlSeconds = 60): Promise<T[]> {
     const cacheKey = `strapi:collection:${path}`;
-    const cached = await this.cacheService.get<T[]>(cacheKey);
-    if (cached) {
-      this.logger.debug(`Cache hit for collection: ${path}`);
-      return cached;
+
+    if (!this.isDev) {
+      const cached = await this.cacheService.get<T[]>(cacheKey);
+      if (cached) {
+        this.logger.debug(`Cache hit for collection: ${path}`);
+        return cached;
+      }
+      this.logger.debug(
+        `Cache miss for collection: ${path}. Fetching from Strapi...`,
+      );
+    } else {
+      this.logger.debug(`Bypassing cache (Dev mode): ${path}. Fetching...`);
     }
 
-    this.logger.debug(
-      `Cache miss for collection: ${path}. Fetching from Strapi...`,
-    );
     const json = await this.fetchRaw<StrapiListResponse<any>>(path);
 
     let result: T[] = [];
@@ -112,7 +126,9 @@ export class StrapiService {
       result = json.map((item) => this.flatten<T>(item));
     }
 
-    await this.cacheService.set(cacheKey, result, ttlSeconds);
+    if (!this.isDev) {
+      await this.cacheService.set(cacheKey, result, ttlSeconds);
+    }
     return result;
   }
 
@@ -121,15 +137,20 @@ export class StrapiService {
    */
   async getSingle<T>(path: string, ttlSeconds = 60): Promise<T | null> {
     const cacheKey = `strapi:single:${path}`;
-    const cached = await this.cacheService.get<T>(cacheKey);
-    if (cached) {
-      this.logger.debug(`Cache hit for single: ${path}`);
-      return cached;
+
+    if (!this.isDev) {
+      const cached = await this.cacheService.get<T>(cacheKey);
+      if (cached) {
+        this.logger.debug(`Cache hit for single: ${path}`);
+        return cached;
+      }
+      this.logger.debug(
+        `Cache miss for single: ${path}. Fetching from Strapi...`,
+      );
+    } else {
+      this.logger.debug(`Bypassing cache (Dev mode): ${path}. Fetching...`);
     }
 
-    this.logger.debug(
-      `Cache miss for single: ${path}. Fetching from Strapi...`,
-    );
     const json = await this.fetchRaw<StrapiSingleResponse<any>>(path);
 
     let result: T | null = null;
@@ -139,7 +160,7 @@ export class StrapiService {
       result = this.flatten<T>(json);
     }
 
-    if (result) {
+    if (result && !this.isDev) {
       await this.cacheService.set(cacheKey, result, ttlSeconds);
     }
     return result;

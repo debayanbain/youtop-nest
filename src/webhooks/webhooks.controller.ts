@@ -12,6 +12,7 @@ import { Webhook } from 'svix';
 import { WebhookEvent } from '@clerk/backend';
 import { PostgresService } from '../core/database/postgres.service';
 import { ClerkWebhookProducer } from '../queues/clerk-webhook.producer';
+import { CacheService } from '../core/cache/cache.service';
 
 @Controller('webhooks')
 export class WebhooksController {
@@ -21,7 +22,18 @@ export class WebhooksController {
     private readonly configService: ConfigService,
     private readonly dbService: PostgresService,
     private readonly producer: ClerkWebhookProducer,
+    private readonly cacheService: CacheService,
   ) {}
+
+  @Post('strapi')
+  @HttpCode(200)
+  async handleStrapiWebhook() {
+    this.logger.log(
+      '[Webhook] Received change event from Strapi — clearing cache',
+    );
+    await this.cacheService.delPattern('strapi:*');
+    return { success: true, message: 'Strapi cache cleared successfully' };
+  }
 
   @Post('clerk')
   @HttpCode(200)
