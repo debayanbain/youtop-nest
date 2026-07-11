@@ -1,33 +1,21 @@
-import { Controller, Get, UseGuards, Optional } from '@nestjs/common';
-import { StrapiService } from '../../core/strapi/strapi.service';
-import { RazorpayService } from '../../razorpay/razorpay.service';
-import { UserId } from '../../auth/user-id.decorator';
-import { Order } from '../../models/order.model';
+import { Controller, Get, Param, NotFoundException } from '@nestjs/common';
+import { ScholarshipsService } from './scholarships.service';
 
-@Controller('scholarships')
+@Controller({ path: 'scholarships', version: '1' })
 export class ScholarshipsController {
-  constructor(
-    private readonly strapiService: StrapiService,
-    private readonly razorpayService: RazorpayService,
-  ) {}
+  constructor(private readonly scholarshipsService: ScholarshipsService) {}
 
   @Get()
-  async getScholarships(@Optional() @UserId() userId: string) {
-    // 1. Fetch from Strapi
-    const scholarships = await this.strapiService.get<any>(
-      '/scholarships?populate=*',
-    );
+  getAll() {
+    return this.scholarshipsService.getAll();
+  }
 
-    // 2. If user is logged in, fetch their purchases (if scholarships are paid, usually they aren't but good to have)
-    let userPurchases: Order[] = [];
-    if (userId) {
-      userPurchases = await this.razorpayService.getUserPurchases(userId);
+  @Get(':slug')
+  async getOne(@Param('slug') slug: string) {
+    const item = await this.scholarshipsService.getBySlug(slug);
+    if (!item) {
+      throw new NotFoundException('Scholarship not found');
     }
-
-    // 3. Combine and clean
-    return scholarships.map((s) => ({
-      ...s,
-      isOwned: userPurchases.some((p) => p.productId === s.id.toString()),
-    }));
+    return item;
   }
 }

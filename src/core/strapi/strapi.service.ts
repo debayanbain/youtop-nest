@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CacheService } from '../cache/cache.service';
 
@@ -19,7 +19,7 @@ export interface StrapiSingleResponse<T> {
 }
 
 @Injectable()
-export class StrapiService {
+export class StrapiService implements OnModuleInit {
   private readonly logger = new Logger(StrapiService.name);
   private readonly baseUrl: string;
   private readonly apiToken: string;
@@ -167,6 +167,34 @@ export class StrapiService {
   }
 
   /**
+   * Fire a cheap ping to wake Render.com's free-tier instance on app boot
+   * so the first real request doesn't hit a cold start.
+   */
+  async onModuleInit(): Promise<void> {
+    this.warmUp().catch(() => {
+      // Non-fatal — warmup failure must never break app startup
+    });
+  }
+
+  async warmUp(): Promise<void> {
+    const url = `${this.baseUrl}/_health`;
+    this.logger.log(
+      'Warming up Strapi instance (Render cold-start prevention)…',
+    );
+    try {
+      await fetch(url, {
+        signal: AbortSignal.timeout(120_000), // 2 min: enough for any cold start
+      });
+      this.logger.log('Strapi warm-up complete.');
+    } catch {
+      // Render returns a non-2xx or times out — either way the instance is awake
+      this.logger.warn(
+        'Strapi warm-up ping finished (non-OK response is fine).',
+      );
+    }
+  }
+
+  /**
    * Invalidate Strapi cache keys
    */
   async invalidate(path: string): Promise<void> {
@@ -176,11 +204,20 @@ export class StrapiService {
   }
 
   /**
-   * Raw request handler
+   * Raw request handler with retry-on-timeout.
+   * Render.com free tier cold starts take 60–120 s; a single timeout kills the
+   * request before the instance is ready.  Retrying 2 more times (with a small
+   * back-off) gives the server the time it needs to wake up.
    */
-  private async fetchRaw<T>(path: string): Promise<T> {
+  private async fetchRaw<T>(
+    path: string,
+    attempt = 1,
+    maxAttempts = 3,
+  ): Promise<T> {
     const cleanPath = path.startsWith('/') ? path : `/${path}`;
     const url = `${this.baseUrl}/api${cleanPath}`;
+    // Per-attempt timeout: 45 s is plenty once warm; 3 × 45 s = 135 s total budget.
+    const timeoutMs = 45_000;
 
     try {
       const response = await fetch(url, {
@@ -188,18 +225,33 @@ export class StrapiService {
           Authorization: `Bearer ${this.apiToken}`,
           'Content-Type': 'application/json',
         },
-        signal: AbortSignal.timeout(60000), // 10s request timeout
+        signal: AbortSignal.timeout(timeoutMs),
       });
 
       if (!response.ok) {
+        const body = await response.text().catch(() => '');
         throw new Error(
-          `Strapi error: ${response.statusText} (${response.status})`,
+          `Strapi error: ${response.statusText} (${response.status}) — ${body}`,
         );
       }
 
       return (await response.json()) as T;
     } catch (error) {
-      this.logger.error(`Failed to fetch from Strapi: ${url}`, error);
+      const isTimeout =
+        error instanceof Error &&
+        (error.name === 'TimeoutError' || error.name === 'AbortError');
+
+      if (isTimeout && attempt < maxAttempts) {
+        const backoffMs = attempt * 5_000; // 5 s, 10 s …
+        this.logger.warn(
+          `Strapi timeout (attempt ${attempt}/${maxAttempts}). Render may be cold-starting. Retrying in ${backoffMs / 1000}s…`,
+        );
+        await new Promise((r) => setTimeout(r, backoffMs));
+        return this.fetchRaw<T>(path, attempt + 1, maxAttempts);
+      }
+
+      this.logger.error(`Failed to fetch from Strapi: ${url}`);
+      this.logger.error(error);
       throw error;
     }
   }

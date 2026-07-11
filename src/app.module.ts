@@ -4,6 +4,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { LoggerModule } from './core/logger/logger.module';
 import { DatabaseModule } from './core/database/database.module';
 import { UsersModule } from './modules/users/users.module';
 import { RazorpayModule } from './razorpay/razorpay.module';
@@ -15,6 +16,10 @@ import { NotesModule } from './modules/notes/notes.module';
 import { ScholarshipsModule } from './modules/scholarships/scholarships.module';
 import { CacheModule } from './core/cache/cache.module';
 import { HomepageModule } from './modules/homepage/homepage.module';
+import { GlobalModule } from './modules/global/global.module';
+import { JobResultsModule } from './modules/job-results/job-results.module';
+import { JobNewsModule } from './modules/job-news/job-news.module';
+import { ScrapingModule } from './scraping/scraping.module';
 import { QueuesModule } from './queues/queues.module';
 
 import {
@@ -46,6 +51,7 @@ import {
         ],
       }),
     }),
+    LoggerModule,
     DatabaseModule,
     CacheModule,
     QueuesModule,
@@ -58,6 +64,10 @@ import {
     NotesModule,
     ScholarshipsModule,
     HomepageModule,
+    GlobalModule,
+    JobResultsModule,
+    JobNewsModule,
+    ScrapingModule,
   ],
   controllers: [AppController],
   providers: [

@@ -44,7 +44,7 @@ export class HomepageMapper {
           subtitle: section.subheading,
           backgroundImage: section.hero_image
             ? {
-                url: MediaUrlHelper.resolve(
+                url: MediaUrlHelper.image(
                   section.hero_image.url ??
                     section.hero_image.data?.attributes?.url,
                 ),
@@ -86,13 +86,11 @@ export class HomepageMapper {
               slug: p.slug ?? '',
               price: p.price ? Number(p.price) : 0,
               discountedPrice: p.old_price ? Number(p.old_price) : undefined,
-              thumbnail: p.thumbnail
-                ? {
-                    url: MediaUrlHelper.resolve(
-                      p.thumbnail.url ?? p.thumbnail.data?.attributes?.url,
-                    ),
-                  }
-                : undefined,
+              thumbnail: {
+                url: MediaUrlHelper.image(
+                  p.thumbnail?.url ?? p.thumbnail?.data?.attributes?.url,
+                ),
+              },
               badge: p.badge ? { text: p.badge } : undefined,
             }),
           ),
@@ -160,7 +158,7 @@ export class HomepageMapper {
       siteName: data.siteName ?? '',
       logo: data.logo
         ? {
-            url: MediaUrlHelper.resolve(
+            url: MediaUrlHelper.image(
               data.logo.url ?? data.logo.data?.attributes?.url,
             ),
           }

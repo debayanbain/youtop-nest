@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { EbooksController } from './ebooks.controller';
-import { RazorpayModule } from '../../razorpay/razorpay.module';
-import { StrapiModule } from '../../core/strapi/strapi.module';
+import { ProductsModule } from '../products/products.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
-  imports: [RazorpayModule, StrapiModule],
+  imports: [ProductsModule, UsersModule],
   controllers: [EbooksController],
 })
 export class EbooksModule {}

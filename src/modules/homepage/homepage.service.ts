@@ -33,23 +33,13 @@ export class HomepageService {
         }),
       this.strapiService
         .getSingle<any>(
-          '/global-setting?populate[logo]=*&populate[socialLinks]=*',
+          '/global-setting?populate[logo]=true&populate[favicon]=true&populate[social_links]=true',
           300,
         )
-        .catch(() =>
-          this.strapiService
-            .getSingle<any>(
-              '/global-settings?populate[logo]=*&populate[socialLinks]=*',
-              300,
-            )
-            .catch((err) => {
-              this.logger.warn(
-                'Global settings not found in Strapi',
-                err?.message,
-              );
-              return null;
-            }),
-        ),
+        .catch((err) => {
+          this.logger.warn('Global settings not found in Strapi', err?.message);
+          return null;
+        }),
     ]);
 
     return {

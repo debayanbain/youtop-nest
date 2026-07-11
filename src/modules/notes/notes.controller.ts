@@ -1,31 +1,31 @@
-import { Controller, Get, UseGuards, Optional } from '@nestjs/common';
-import { StrapiService } from '../../core/strapi/strapi.service';
-import { RazorpayService } from '../../razorpay/razorpay.service';
+import {
+  Controller,
+  Get,
+  Param,
+  NotFoundException,
+  UseGuards,
+} from '@nestjs/common';
+import { ProductsService } from '../products/products.service';
 import { UserId } from '../../auth/user-id.decorator';
-import { Order } from '../../models/order.model';
+import { ClerkOptionalAuthGuard } from '../../auth/optional-auth.guard';
 
-@Controller('notes')
+@Controller({ path: 'notes', version: '1' })
 export class NotesController {
-  constructor(
-    private readonly strapiService: StrapiService,
-    private readonly razorpayService: RazorpayService,
-  ) {}
+  constructor(private readonly productsService: ProductsService) {}
 
   @Get()
-  async getNotes(@Optional() @UserId() userId: string) {
-    // 1. Fetch from Strapi
-    const notes = await this.strapiService.get<any>('/notes?populate=*');
+  @UseGuards(ClerkOptionalAuthGuard)
+  async getNotes(@UserId() userId: string) {
+    return this.productsService.getByType('note', userId);
+  }
 
-    // 2. If user is logged in, fetch their purchases
-    let userPurchases: Order[] = [];
-    if (userId) {
-      userPurchases = await this.razorpayService.getUserPurchases(userId);
+  @Get(':id')
+  @UseGuards(ClerkOptionalAuthGuard)
+  async getNote(@Param('id') id: string, @UserId() userId: string) {
+    const note = await this.productsService.getById(id, 'note', userId);
+    if (!note) {
+      throw new NotFoundException('Note not found');
     }
-
-    // 3. Combine and clean
-    return notes.map((note) => ({
-      ...note,
-      isOwned: userPurchases.some((p) => p.productId === note.id.toString()),
-    }));
+    return note;
   }
 }

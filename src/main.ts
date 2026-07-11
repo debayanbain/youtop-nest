@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import compression from 'compression';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { MediaUrlHelper } from './common/helpers/media-url.helper';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { ResponseTransformInterceptor } from './common/interceptors/response-transform.interceptor';
@@ -14,7 +15,11 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule, {
     rawBody: true,
+    bufferLogs: true, // hold early logs until the Winston logger is attached
   });
+
+  // Route ALL Nest + framework logs through the centralized Winston logger
+  app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
 
   // Set global API prefix
   app.setGlobalPrefix('api');
