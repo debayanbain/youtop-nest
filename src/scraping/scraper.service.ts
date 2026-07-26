@@ -9,6 +9,8 @@ import {
   ScrapeSource,
   ScrapeContentType,
 } from './sources.registry';
+import { mapDataGovRecord } from './data-gov.mapper';
+import { parseFreejobalert, JobPostingDetails } from './job-detail.parser';
 
 interface ScrapedItem {
   title: string;
@@ -16,6 +18,7 @@ interface ScrapedItem {
   date?: string;
   summary?: string;
   image?: string;
+  details?: JobPostingDetails;
 }
 
 export interface ScrapeResult {
@@ -72,8 +75,22 @@ export class ScraperService {
   private async scrapeSource(source: ScrapeSource): Promise<ScrapeResult> {
     const result: ScrapeResult = { source: source.key, created: 0, skipped: 0 };
     try {
-      // A published RSS feed is opt-in syndication, so robots.txt (a crawler
-      // directive) only gates HTML page scraping.
+      // API mode: resolve the {API_KEY}/{RESOURCE_ID} template from env. Skip
+      // (not an error worth alerting on) when the source isn't configured yet.
+      let effectiveUrl = source.url;
+      if (source.mode === 'api') {
+        const resolved = this.resolveApiUrl(source);
+        if (!resolved) {
+          result.error =
+            'data.gov.in not configured (set DATA_GOV_API_KEY & DATA_GOV_NCS_RESOURCE_ID)';
+          this.logger.warn(`[${source.key}] ${result.error}`);
+          return result;
+        }
+        effectiveUrl = resolved;
+      }
+
+      // A published RSS feed / open-data API is opt-in syndication, so robots.txt
+      // (a crawler directive) only gates HTML page scraping.
       if (source.mode === 'html' && !(await this.allowedByRobots(source.url))) {
         result.error = 'blocked by robots.txt';
         this.logger.warn(`[${source.key}] blocked by robots.txt`);
@@ -83,10 +100,15 @@ export class ScraperService {
       const items =
         source.mode === 'rss'
           ? await this.parseRss(source)
-          : await this.parseHtml(source);
+          : source.mode === 'api'
+            ? await this.parseApi(source, effectiveUrl)
+            : await this.parseHtml(source);
 
       const plural = PLURAL[source.contentType];
-      for (const item of items.slice(0, this.maxItems)) {
+      for (const item of this.filterByTitle(source, items).slice(
+        0,
+        this.maxItems,
+      )) {
         if (!item.title || !item.link) {
           result.skipped++;
           continue;
@@ -94,6 +116,12 @@ export class ScraperService {
         if (await this.writer.existsBySourceUrl(plural, item.link)) {
           result.skipped++;
           continue;
+        }
+        // Only enrich items we're actually about to write, to avoid wasted
+        // detail fetches on duplicates.
+        if (source.enrich) {
+          item.details = await this.enrich(source, item.link);
+          await this.sleep(300);
         }
         const ok = await this.writer.createDraft(
           plural,
@@ -153,6 +181,79 @@ export class ScraperService {
     return out;
   }
 
+  /**
+   * Fill the {API_KEY}/{RESOURCE_ID} placeholders from env. Returns null when
+   * either is missing so the source is skipped rather than fetched blindly.
+   */
+  private resolveApiUrl(source: ScrapeSource): string | null {
+    const key = this.config.get<string>('DATA_GOV_API_KEY') || '';
+    const resource =
+      this.config.get<string>('DATA_GOV_NCS_RESOURCE_ID') || '';
+    if (!key || !resource) return null;
+    return source.url
+      .replace('{RESOURCE_ID}', encodeURIComponent(resource))
+      .replace('{API_KEY}', encodeURIComponent(key));
+  }
+
+  /** data.gov.in JSON: `{ records: [...] }`, mapped via `mapDataGovRecord`. */
+  private async parseApi(
+    source: ScrapeSource,
+    url: string,
+  ): Promise<ScrapedItem[]> {
+    const json = await this.fetchJson(url);
+    const path = source.recordsPath || 'records';
+    const records = (json?.[path] ?? []) as Record<string, unknown>[];
+    if (!Array.isArray(records)) return [];
+    const out: ScrapedItem[] = [];
+    for (const rec of records) {
+      const item = mapDataGovRecord(rec, source.apiFields);
+      if (item) out.push(item);
+    }
+    return out;
+  }
+
+  private async fetchJson(url: string): Promise<Record<string, unknown>> {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': this.userAgent, Accept: 'application/json' },
+    });
+    // Never leak the api-key query string into logs.
+    if (!res.ok) throw new Error(`fetch ${url.split('?')[0]} -> ${res.status}`);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
+  /** Keep/drop items by the source's title include/exclude regexes. */
+  private filterByTitle(
+    source: ScrapeSource,
+    items: ScrapedItem[],
+  ): ScrapedItem[] {
+    const inc = source.titleInclude ? new RegExp(source.titleInclude, 'i') : null;
+    const exc = source.titleExclude ? new RegExp(source.titleExclude, 'i') : null;
+    if (!inc && !exc) return items;
+    return items.filter(
+      (it) =>
+        (!inc || inc.test(it.title)) && (!exc || !exc.test(it.title)),
+    );
+  }
+
+  /** Fetch an item's detail page and parse structured posting fields. */
+  private async enrich(
+    source: ScrapeSource,
+    url: string,
+  ): Promise<JobPostingDetails | undefined> {
+    try {
+      const html = await this.fetchText(url);
+      if (source.detailParser === 'freejobalert') {
+        return parseFreejobalert(html, url);
+      }
+      return undefined;
+    } catch (err) {
+      this.logger.warn(
+        `[${source.key}] enrich failed for ${url}: ${(err as Error).message}`,
+      );
+      return undefined;
+    }
+  }
+
   /** Map a normalized item to the target content type's draft payload. */
   private toEntry(
     source: ScrapeSource,
@@ -189,7 +290,24 @@ export class ScraperService {
           active: true,
           source_meta,
         };
-      case 'job-news':
+      case 'job-news': {
+        const d = item.details;
+        const posting = d
+          ? {
+              is_posting: true,
+              organization: d.organization,
+              vacancies: d.vacancies,
+              qualification: d.qualification,
+              eligibility: d.eligibility,
+              age_limit: d.ageLimit,
+              salary: d.salary,
+              application_fee: d.applicationFee,
+              last_date: d.lastDate,
+              apply_link: d.applyLink,
+              notification_link: d.notificationLink,
+              official_website: d.officialWebsite,
+            }
+          : {};
         return {
           title: item.title,
           slug,
@@ -199,7 +317,9 @@ export class ScraperService {
           category: source.newsCategory ?? 'job',
           active: true,
           source_meta,
+          ...posting,
         };
+      }
     }
   }
 

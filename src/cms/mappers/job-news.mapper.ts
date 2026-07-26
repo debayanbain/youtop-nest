@@ -15,6 +15,18 @@ export class JobNewsMapper {
       category: p.category ?? undefined,
       image: MediaUrlHelper.image(p.thumbnail?.url),
       sourceType: p.source_meta?.source_type ?? 'manual',
+      isPosting: p.is_posting ?? false,
+      organization: p.organization ?? undefined,
+      vacancies: p.vacancies ?? undefined,
+      qualification: p.qualification ?? undefined,
+      eligibility: p.eligibility ?? undefined,
+      ageLimit: p.age_limit ?? undefined,
+      salary: p.salary ?? undefined,
+      applicationFee: p.application_fee ?? undefined,
+      lastDate: p.last_date ?? undefined,
+      applyLink: p.apply_link ?? undefined,
+      notificationLink: p.notification_link ?? undefined,
+      officialWebsite: p.official_website ?? undefined,
     };
   }
 }

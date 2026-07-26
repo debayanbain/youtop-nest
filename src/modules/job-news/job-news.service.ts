@@ -8,9 +8,12 @@ export class JobNewsService {
   constructor(private readonly strapiService: StrapiService) {}
 
   // Strapi pluralName for the `job-news` type is `job-news-items`.
+  // The Job News tab shows actual vacancy POSTINGS (is_posting=true), enriched
+  // with organization/eligibility/dates/apply links — not general news.
   async getAll(): Promise<JobNewsDto[]> {
     const items = await this.strapiService.getCollection<any>(
-      '/job-news-items?filters[active][$eq]=true&populate=*&sort=published_date:desc',
+      '/job-news-items?filters[active][$eq]=true&filters[is_posting][$eq]=true' +
+        '&populate=*&sort=published_date:desc&pagination[pageSize]=100',
       60,
     );
     return items.map((p) => JobNewsMapper.map(p));

@@ -10,4 +10,17 @@ export interface JobNewsDto {
   image: string;
   /** 'manual' | 'scraped' — origin badge for the UI/admin. */
   sourceType: string;
+  /** True when this row is an actual vacancy posting (enriched), not news. */
+  isPosting: boolean;
+  organization?: string;
+  vacancies?: string;
+  qualification?: string;
+  eligibility?: string;
+  ageLimit?: string;
+  salary?: string;
+  applicationFee?: string;
+  lastDate?: string;
+  applyLink?: string;
+  notificationLink?: string;
+  officialWebsite?: string;
 }

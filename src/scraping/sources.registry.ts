@@ -1,3 +1,5 @@
+import type { ApiFieldAliases } from './data-gov.mapper';
+
 export type ScrapeContentType = 'job-result' | 'scholarship' | 'job-news';
 
 /** CSS selectors relative to `itemSelector` (HTML mode only). */
@@ -13,7 +15,7 @@ export interface ScrapeFieldSelectors {
 export interface ScrapeSource {
   key: string;
   contentType: ScrapeContentType;
-  mode: 'rss' | 'html';
+  mode: 'rss' | 'html' | 'api';
   url: string;
   enabled: boolean;
   sourceName?: string;
@@ -21,6 +23,20 @@ export interface ScrapeSource {
   newsCategory?: string;
   itemSelector?: string;
   fields?: ScrapeFieldSelectors;
+  /* --- API mode (data.gov.in) only --- */
+  /** JSON array path in the response holding the records. Default 'records'. */
+  recordsPath?: string;
+  /** Per-field record key overrides for the data.gov.in mapper. */
+  apiFields?: ApiFieldAliases;
+  /* --- Detail enrichment (job postings) --- */
+  /** Fetch each item's page and parse structured posting fields. */
+  enrich?: boolean;
+  /** Which detail parser to run when `enrich` is set. */
+  detailParser?: 'freejobalert';
+  /** Only keep items whose title matches (case-insensitive regex source). */
+  titleInclude?: string;
+  /** Drop items whose title matches (case-insensitive regex source). */
+  titleExclude?: string;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -37,43 +53,87 @@ type RawCategory = 'news' | 'job' | 'result' | 'scholarship';
 
 interface RawSource {
   name: string;
-  type: 'rss' | 'html';
+  type: 'rss' | 'html' | 'api';
   category: RawCategory;
   url: string;
   enabled: boolean;
   itemSelector?: string;
   fields?: ScrapeFieldSelectors;
+  recordsPath?: string;
+  apiFields?: ApiFieldAliases;
+  enrich?: boolean;
+  detailParser?: 'freejobalert';
+  titleInclude?: string;
+  titleExclude?: string;
 }
 
 const RAW_SOURCES: RawSource[] = [
+  // ----------------------- OFFICIAL API (data.gov.in) ----------------------
+  // Generic data.gov.in open-data source (mode 'api'). DORMANT by default:
+  // the NCS datasets on data.gov.in turned out to be stale MONTHLY AGGREGATE
+  // stats (e.g. "Vacancies Mobilised till 30 Sep 2023"), not live job listings,
+  // so there is nothing worth ingesting yet. The pipeline is kept ready — the
+  // day a real per-listing open-data API exists, set enabled: true, point `url`
+  // at it (keep the {RESOURCE_ID}/{API_KEY} placeholders), set env
+  // DATA_GOV_API_KEY + DATA_GOV_NCS_RESOURCE_ID, and override record field names
+  // in `apiFields` (e.g. { title: 'jobtitle', date: 'postedon' }) if needed.
+  {
+    name: 'data.gov.in — NCS Jobs',
+    type: 'api',
+    category: 'job',
+    url: 'https://api.data.gov.in/resource/{RESOURCE_ID}?api-key={API_KEY}&format=json&limit=50',
+    enabled: false,
+    recordsPath: 'records',
+    apiFields: {},
+  },
+
   // ------------------------------- NEWS ------------------------------------
   {
     name: 'Google News — Education',
     type: 'rss',
     category: 'news',
     url: 'https://news.google.com/rss/search?q=education+news+india&hl=en-IN&gl=IN&ceid=IN:en',
-    enabled: true,
+    enabled: false,
   },
   {
     name: 'Google News — CBSE / NEET / JEE',
     type: 'rss',
     category: 'news',
     url: 'https://news.google.com/rss/search?q=CBSE+OR+NEET+OR+JEE+news&hl=en-IN&gl=IN&ceid=IN:en',
-    enabled: true,
+    enabled: false,
   },
   {
     name: 'The Hindu — Education',
     type: 'rss',
     category: 'news',
     url: 'https://www.thehindu.com/education/feeder/default.rss',
-    enabled: true,
+    enabled: false,
   },
   {
     name: 'Indian Express — Education',
     type: 'rss',
     category: 'news',
     url: 'https://indianexpress.com/section/education/feed/',
+    enabled: false,
+  },
+
+  // --------------------------- JOB POSTINGS --------------------------------
+  // Actual vacancy notifications (not news). RSS gives the list; `enrich` then
+  // fetches each posting page and the freejobalert parser pulls organization,
+  // vacancies, qualification, fee, dates and the official apply/notification
+  // links. titleInclude keeps recruitment/online-form items; titleExclude drops
+  // results/admit-cards/answer-keys that share the feed. These land as job-news
+  // with is_posting = true.
+  {
+    name: 'FreeJobAlert — Latest Jobs',
+    type: 'rss',
+    category: 'job',
+    url: 'https://www.freejobalert.com/feed/',
     enabled: true,
+    enrich: true,
+    detailParser: 'freejobalert',
+    titleInclude: 'recruitment|vacanc|online form|apply online|notification|\\bposts?\\b|bharti|bharati|naukri',
+    titleExclude: 'result|answer key|admit card|cut ?off|merit list|syllabus|date sheet|time table|counsell?ing|admission|entrance|scorecard|score card',
   },
 
   // ------------------------------- JOBS ------------------------------------
@@ -224,6 +284,12 @@ export const SCRAPE_SOURCES: ScrapeSource[] = RAW_SOURCES.filter(
     sourceName: s.name,
     itemSelector: s.itemSelector,
     fields: s.fields,
+    recordsPath: s.recordsPath,
+    apiFields: s.apiFields,
+    enrich: s.enrich,
+    detailParser: s.detailParser,
+    titleInclude: s.titleInclude,
+    titleExclude: s.titleExclude,
     enabled: s.enabled,
   };
 });
