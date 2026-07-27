@@ -19,6 +19,7 @@ import { HomepageModule } from './modules/homepage/homepage.module';
 import { GlobalModule } from './modules/global/global.module';
 import { JobResultsModule } from './modules/job-results/job-results.module';
 import { JobNewsModule } from './modules/job-news/job-news.module';
+import { NoticesModule } from './modules/notices/notices.module';
 import { ScrapingModule } from './scraping/scraping.module';
 import { QueuesModule } from './queues/queues.module';
 
@@ -67,6 +68,7 @@ import {
     GlobalModule,
     JobResultsModule,
     JobNewsModule,
+    NoticesModule,
     ScrapingModule,
   ],
   controllers: [AppController],

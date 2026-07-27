@@ -3,6 +3,8 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
 import { SCRAPING_QUEUE } from './scraping.constants';
+import { SOURCE_SCRAPERS } from './sources/source-scraper.registry';
+import { SCRAPE_SOURCES } from './sources.registry';
 
 @Injectable()
 export class ScrapingProducer implements OnModuleInit {
@@ -13,7 +15,14 @@ export class ScrapingProducer implements OnModuleInit {
     private readonly config: ConfigService,
   ) {}
 
-  /** Register the recurring scrape only when explicitly enabled via env. */
+  /**
+   * Register ONE repeatable job PER SOURCE (modular official scrapers + legacy
+   * RSS/HTML/api sources), only when explicitly enabled via env. Per-source
+   * scheduling keeps runs independent; a stable `jobId` per source makes
+   * re-registration on restart idempotent. There is intentionally no
+   * `scrape-all` repeatable (that would double-run every source) — scrape-all
+   * remains a manual admin trigger only.
+   */
   async onModuleInit(): Promise<void> {
     const enabled =
       String(this.config.get('SCRAPE_SCHEDULE_ENABLED') ?? 'false') === 'true';
@@ -23,20 +32,36 @@ export class ScrapingProducer implements OnModuleInit {
       );
       return;
     }
-    const every = Number(
-      this.config.get('SCRAPE_INTERVAL_MS') ?? 6 * 60 * 60 * 1000,
+    const defaultEvery = Number(
+      this.config.get('SCRAPE_SOURCE_INTERVAL_MS') ?? 30 * 60 * 1000,
     );
-    await this.queue.add(
-      'scrape-all',
-      {},
-      {
-        repeat: { every },
-        jobId: 'scrape-all-repeatable',
-        removeOnComplete: 20,
-        removeOnFail: 50,
-      },
+
+    const keys: { key: string; every: number }[] = [
+      ...SOURCE_SCRAPERS.filter((s) => s.enabled).map((s) => ({
+        key: s.key,
+        every: s.scheduleMs ?? defaultEvery,
+      })),
+      ...SCRAPE_SOURCES.filter((s) => s.enabled).map((s) => ({
+        key: s.key,
+        every: defaultEvery,
+      })),
+    ];
+
+    for (const { key, every } of keys) {
+      await this.queue.add(
+        'scrape-source',
+        { key },
+        {
+          repeat: { every },
+          jobId: `scrape-${key}-repeatable`,
+          removeOnComplete: 20,
+          removeOnFail: 50,
+        },
+      );
+    }
+    this.logger.log(
+      `Scrape scheduler enabled: ${keys.length} per-source jobs (default every ${defaultEvery}ms).`,
     );
-    this.logger.log(`Scrape scheduler enabled: every ${every}ms.`);
   }
 
   async triggerAll(): Promise<void> {

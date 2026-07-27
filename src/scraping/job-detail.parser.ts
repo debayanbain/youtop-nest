@@ -18,6 +18,9 @@ export interface JobPostingDetails {
   applyLink?: string;
   notificationLink?: string;
   officialWebsite?: string;
+  /* --- result pages --- */
+  resultDate?: string; // ISO yyyy-mm-dd
+  resultLink?: string;
 }
 
 const clean = (s: string) => s.replace(/\s+/g, ' ').trim();
@@ -128,6 +131,18 @@ export function parseFreejobalert(
     applyLink: pickLink('application form', 'apply online', 'apply'),
     notificationLink: pickLink('notification', 'advertisement'),
     officialWebsite: pickLink('official website', 'website'),
+    resultDate: toIso(
+      pick('result date', 'date of result', 'result declared', 'declared on'),
+    ),
+    resultLink: pickLink(
+      'download result',
+      'check result',
+      'result link',
+      'result',
+      'score card',
+      'scorecard',
+      'merit list',
+    ),
   };
 
   // Last resort: if the page exposed no official/apply/notification link at all,

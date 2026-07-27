@@ -11,4 +11,9 @@ export interface JobResultDto {
   image: string;
   /** 'manual' | 'scraped' — origin badge for the UI/admin. */
   sourceType: string;
+  /** result | admit-card | answer-key | merit-list | counseling | cutoff | notification */
+  kind?: string;
+  tags?: string;
+  seoDescription?: string;
+  seoKeywords?: string;
 }

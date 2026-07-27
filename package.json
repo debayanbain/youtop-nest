@@ -31,6 +31,7 @@
     "seed:undo": "sequelize-cli db:seed:undo:all"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@bull-board/api": "^7.0.0",
     "@bull-board/express": "^7.0.0",
     "@bull-board/nestjs": "^7.0.0",

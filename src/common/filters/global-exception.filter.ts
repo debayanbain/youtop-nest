@@ -25,10 +25,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     let message: string | object = 'Internal server error';
     if (exception instanceof HttpException) {
       const errorResponse = exception.getResponse();
-      message = typeof errorResponse === 'object' ? errorResponse : { message: errorResponse };
+      message =
+        typeof errorResponse === 'object'
+          ? errorResponse
+          : { message: errorResponse };
     }
 
-    const errorDetails = exception instanceof Error ? exception.stack : JSON.stringify(exception);
+    const errorDetails =
+      exception instanceof Error ? exception.stack : JSON.stringify(exception);
 
     // Only log 5xx as error. Keep 4xx as warnings.
     if (status >= 500) {
@@ -43,9 +47,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       );
     }
 
-    const payloadMsg = typeof message === 'object' && 'message' in message
-      ? (message as any).message
-      : message;
+    const payloadMsg =
+      typeof message === 'object' && 'message' in message
+        ? (message as any).message
+        : message;
 
     response.status(status).json({
       success: false,

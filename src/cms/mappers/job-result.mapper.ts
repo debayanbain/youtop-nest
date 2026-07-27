@@ -16,6 +16,10 @@ export class JobResultMapper {
       pdfUrl: MediaUrlHelper.resolve(p.result_pdf?.url) || null,
       image: MediaUrlHelper.image(p.thumbnail?.url),
       sourceType: p.source_meta?.source_type ?? 'manual',
+      kind: p.kind ?? undefined,
+      tags: p.tags ?? undefined,
+      seoDescription: p.seo_description ?? undefined,
+      seoKeywords: p.seo_keywords ?? undefined,
     };
   }
 }

@@ -132,8 +132,27 @@ const RAW_SOURCES: RawSource[] = [
     enabled: true,
     enrich: true,
     detailParser: 'freejobalert',
-    titleInclude: 'recruitment|vacanc|online form|apply online|notification|\\bposts?\\b|bharti|bharati|naukri',
-    titleExclude: 'result|answer key|admit card|cut ?off|merit list|syllabus|date sheet|time table|counsell?ing|admission|entrance|scorecard|score card',
+    titleInclude:
+      'recruitment|vacanc|online form|apply online|notification|\\bposts?\\b|bharti|bharati|naukri',
+    titleExclude:
+      'result|answer key|admit card|cut ?off|merit list|syllabus|date sheet|time table|counsell?ing|admission|entrance|scorecard|score card',
+  },
+
+  // ------------------------------ RESULTS ----------------------------------
+  // Exam/recruitment RESULTS from FreeJobAlert, enriched with organization,
+  // result date and the official result/download link (-> job-result).
+  {
+    name: 'FreeJobAlert — Results',
+    type: 'rss',
+    category: 'result',
+    url: 'https://www.freejobalert.com/feed/',
+    enabled: true,
+    enrich: true,
+    detailParser: 'freejobalert',
+    titleInclude:
+      'result|answer key|score ?card|merit list|final selection|marks',
+    titleExclude:
+      'recruitment|online form|apply online|vacanc|admit card|syllabus|date sheet|notification out',
   },
 
   // ------------------------------- JOBS ------------------------------------
@@ -172,14 +191,14 @@ const RAW_SOURCES: RawSource[] = [
     type: 'rss',
     category: 'result',
     url: 'https://news.google.com/rss/search?q=board+exam+result+OR+admit+card+india&hl=en-IN&gl=IN&ceid=IN:en',
-    enabled: true,
+    enabled: false,
   },
   {
     name: 'Google News — West Bengal Board Results',
     type: 'rss',
     category: 'result',
     url: 'https://news.google.com/rss/search?q=WBBSE+OR+WBCHSE+OR+Madhyamik+OR+%22higher+secondary%22+result&hl=en-IN&gl=IN&ceid=IN:en',
-    enabled: true,
+    enabled: false,
   },
 
   // ---------------------------- SCHOLARSHIPS -------------------------------

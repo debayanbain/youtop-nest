@@ -11,6 +11,12 @@ import {
 } from './sources.registry';
 import { mapDataGovRecord } from './data-gov.mapper';
 import { parseFreejobalert, JobPostingDetails } from './job-detail.parser';
+import { ScrapeJobRecorder } from './monitor/scrape-job-recorder.service';
+import { NormalizerService } from './normalize/normalizer.service';
+import { AiEnrichmentService } from './enrich/ai-enrichment.service';
+import { CacheService } from '../core/cache/cache.service';
+import { SOURCE_SCRAPERS } from './sources/source-scraper.registry';
+import { SourceScraper } from './interfaces/source-scraper.interface';
 
 interface ScrapedItem {
   title: string;
@@ -46,6 +52,10 @@ export class ScraperService {
   constructor(
     private readonly config: ConfigService,
     private readonly writer: StrapiWriterService,
+    private readonly recorder: ScrapeJobRecorder,
+    private readonly normalizer: NormalizerService,
+    private readonly enricher: AiEnrichmentService,
+    private readonly cache: CacheService,
   ) {
     this.userAgent =
       this.config.get<string>('SCRAPER_USER_AGENT') ||
@@ -59,6 +69,11 @@ export class ScraperService {
   /** Run every enabled source, politely spaced out. Errors are isolated. */
   async scrapeAll(): Promise<ScrapeResult[]> {
     const results: ScrapeResult[] = [];
+    // Modular official-site scrapers first, then legacy RSS/HTML/api sources.
+    for (const scraper of SOURCE_SCRAPERS.filter((s) => s.enabled)) {
+      results.push(await this.runSourceScraper(scraper));
+      await this.sleep(this.delayMs);
+    }
     for (const source of SCRAPE_SOURCES.filter((s) => s.enabled)) {
       results.push(await this.scrapeSource(source));
       await this.sleep(this.delayMs);
@@ -67,13 +82,84 @@ export class ScraperService {
   }
 
   async scrapeSourceByKey(key: string): Promise<ScrapeResult> {
+    const modular = SOURCE_SCRAPERS.find((s) => s.key === key);
+    if (modular) return this.runSourceScraper(modular);
     const source = SCRAPE_SOURCES.find((s) => s.key === key);
     if (!source) throw new Error(`Unknown scrape source: ${key}`);
     return this.scrapeSource(source);
   }
 
+  /**
+   * New pipeline: a SourceScraper yields ScrapedResult[]; we normalize each to
+   * the right Strapi type, dedup by source_url, publish, count, and record the
+   * run. Cache is cleared once at the end if anything was written.
+   */
+  private async runSourceScraper(
+    scraper: SourceScraper,
+  ): Promise<ScrapeResult> {
+    const result: ScrapeResult = {
+      source: scraper.key,
+      created: 0,
+      skipped: 0,
+    };
+    const startedAt = Date.now();
+    const jobId = await this.recorder.start(scraper.key);
+    try {
+      const items = await scraper.fetch();
+      for (const item of items.slice(0, this.maxItems)) {
+        if (!item.title || !item.url) {
+          result.skipped++;
+          continue;
+        }
+        const { plural, entry, sourceUrl } = this.normalizer.normalize(item);
+        if (await this.writer.existsBySourceUrl(plural, sourceUrl)) {
+          result.skipped++;
+          continue;
+        }
+        // Optional AI-SEO enrichment (only for items we'll actually write).
+        if (this.enricher.isEnabled) {
+          const seo = await this.enricher.enrich({
+            title: item.title,
+            description: item.description,
+            organisation: item.organisation,
+            category: item.category,
+          });
+          if (seo.seoDescription) entry.seo_description = seo.seoDescription;
+          if (seo.seoKeywords) entry.seo_keywords = seo.seoKeywords;
+          if (seo.excerpt) {
+            if (plural === 'job-news-items' && !entry.summary)
+              entry.summary = seo.excerpt;
+            else if (!entry.description) entry.description = seo.excerpt;
+          }
+        }
+        const ok = await this.writer.createDraft(plural, entry);
+        if (ok) result.created++;
+        else result.skipped++;
+      }
+      if (result.created > 0) await this.cache.delPattern('strapi:*');
+      this.logger.log(
+        `[${scraper.key}] created=${result.created} skipped=${result.skipped}`,
+      );
+    } catch (err) {
+      result.error = (err as Error).message;
+      this.logger.error(`[${scraper.key}] scrape failed: ${result.error}`);
+    } finally {
+      await this.recorder.finish(jobId, {
+        status: result.error ? 'error' : 'success',
+        itemsFound: result.created + result.skipped,
+        itemsInserted: result.created,
+        itemsSkipped: result.skipped,
+        durationMs: Date.now() - startedAt,
+        error: result.error ?? null,
+      });
+    }
+    return result;
+  }
+
   private async scrapeSource(source: ScrapeSource): Promise<ScrapeResult> {
     const result: ScrapeResult = { source: source.key, created: 0, skipped: 0 };
+    const startedAt = Date.now();
+    const jobId = await this.recorder.start(source.key);
     try {
       // API mode: resolve the {API_KEY}/{RESOURCE_ID} template from env. Skip
       // (not an error worth alerting on) when the source isn't configured yet.
@@ -136,6 +222,15 @@ export class ScraperService {
     } catch (err) {
       result.error = (err as Error).message;
       this.logger.error(`[${source.key}] scrape failed: ${result.error}`);
+    } finally {
+      await this.recorder.finish(jobId, {
+        status: result.error ? 'error' : 'success',
+        itemsFound: result.created + result.skipped,
+        itemsInserted: result.created,
+        itemsSkipped: result.skipped,
+        durationMs: Date.now() - startedAt,
+        error: result.error ?? null,
+      });
     }
     return result;
   }
@@ -187,8 +282,7 @@ export class ScraperService {
    */
   private resolveApiUrl(source: ScrapeSource): string | null {
     const key = this.config.get<string>('DATA_GOV_API_KEY') || '';
-    const resource =
-      this.config.get<string>('DATA_GOV_NCS_RESOURCE_ID') || '';
+    const resource = this.config.get<string>('DATA_GOV_NCS_RESOURCE_ID') || '';
     if (!key || !resource) return null;
     return source.url
       .replace('{RESOURCE_ID}', encodeURIComponent(resource))
@@ -226,12 +320,15 @@ export class ScraperService {
     source: ScrapeSource,
     items: ScrapedItem[],
   ): ScrapedItem[] {
-    const inc = source.titleInclude ? new RegExp(source.titleInclude, 'i') : null;
-    const exc = source.titleExclude ? new RegExp(source.titleExclude, 'i') : null;
+    const inc = source.titleInclude
+      ? new RegExp(source.titleInclude, 'i')
+      : null;
+    const exc = source.titleExclude
+      ? new RegExp(source.titleExclude, 'i')
+      : null;
     if (!inc && !exc) return items;
     return items.filter(
-      (it) =>
-        (!inc || inc.test(it.title)) && (!exc || !exc.test(it.title)),
+      (it) => (!inc || inc.test(it.title)) && (!exc || !exc.test(it.title)),
     );
   }
 
@@ -269,16 +366,20 @@ export class ScraperService {
     const date = this.toIsoDate(item.date);
 
     switch (source.contentType) {
-      case 'job-result':
+      case 'job-result': {
+        const d = item.details;
         return {
           title: item.title,
           slug,
-          official_link: item.link,
-          result_date: date,
+          official_link: d?.resultLink || d?.officialWebsite || item.link,
+          result_date: d?.resultDate || date,
           description: item.summary,
+          organization: d?.organization,
+          post_name: d?.postName,
           active: true,
           source_meta,
         };
+      }
       case 'scholarship':
         return {
           title: item.title,

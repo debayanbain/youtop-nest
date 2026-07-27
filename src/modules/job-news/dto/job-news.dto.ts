@@ -23,4 +23,7 @@ export interface JobNewsDto {
   applyLink?: string;
   notificationLink?: string;
   officialWebsite?: string;
+  tags?: string;
+  seoDescription?: string;
+  seoKeywords?: string;
 }

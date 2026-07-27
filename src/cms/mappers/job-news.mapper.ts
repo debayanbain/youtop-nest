@@ -27,6 +27,9 @@ export class JobNewsMapper {
       applyLink: p.apply_link ?? undefined,
       notificationLink: p.notification_link ?? undefined,
       officialWebsite: p.official_website ?? undefined,
+      tags: p.tags ?? undefined,
+      seoDescription: p.seo_description ?? undefined,
+      seoKeywords: p.seo_keywords ?? undefined,
     };
   }
 }
